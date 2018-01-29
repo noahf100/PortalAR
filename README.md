@@ -16,11 +16,11 @@ Install [WebARonARKit] or [WebARonARCore] on your mobile device.
 ## Demo
 [Demo]
 
-Creating a portal
-<img align="center" alt="Creating a portal" src="examples/demo1.gif">
+Creating a portal<br/>
+<img align="center" alt="Creating a portal" src="examples/demo1.gif"><br/>
 
-Walking inside a portal and creating a new one
-<img align="center" alt="Walking inside a portal and creating a new one" src="examples/demo2.gif">
+Walking inside a portal and creating a new one<br/>
+<img align="center" alt="Walking inside a portal and creating a new one" src="examples/demo2.gif"><br/>
 
 [three.ar.js]: https://github.com/google-ar/three.ar.js
 [Demo]: http://noahfang.me/AR/portal.html
