@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Portals</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no,
+    minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+      body {
+        font-family: monospace;
+        margin: 0;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+        height: 100vh;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #info {
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        transform: translate(-50%, 0);
+        margin: 1em;
+        z-index: 10;
+        display: block;
+        line-height: 2em;
+        text-align: center;
+      }
+      #info * {
+        color: #fff;
+      }
+      .title {
+        background-color: rgba(40, 40, 40, 0.4);
+        padding: 0.4em 0.6em;
+        border-radius: 0.1em;
+      }
+      .links {
+        background-color: rgba(40, 40, 40, 0.6);
+        padding: 0.4em 0.6em;
+        border-radius: 0.1em;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="info">
+      <span class="title">Tap to spawn portals</span><br/>
+    </div>
+
+    <script src="./third_party/three.js/three.js"></script>
+    <script src="./third_party/three.js/VRControls.js"></script>
+    <script src="./dist/three.ar.js"></script>
+
+    <script>
+    var vrDisplay;
+    var vrFrameData;
+    var vrControls;
+    var arView;
+    var canvas;
+    var camera;
+    var scene;
+    var renderer;
+    var cube;
+    var colors = [
+      new THREE.Color( 0xffffff ),
+      new THREE.Color( 0xffff00 ),
+      new THREE.Color( 0xff00ff ),
+      new THREE.Color( 0xff0000 ),
+      new THREE.Color( 0x00ffff ),
+      new THREE.Color( 0x00ff00 ),
+      new THREE.Color( 0x0000ff ),
+      new THREE.Color( 0x000000 )
+    ];
+    var portal = null;
+    var images = [
+      "./assets/IMG_1727.jpg",
+      "./assets/IMG_1728.jpg",
+      "./assets/IMG_1732.jpg",
+      "./assets/IMG_1733.jpg",
+      "./assets/IMG_1736.jpg",
+    ];
+    var audio = [
+      new Audio("./assets/get_schwifty_in_here.wav"),
+      new Audio("./assets/Hi_I'm_mr_meeseeks_look_at_me.wav"),
+      new Audio("./assets/I_like_what_you_got.wav"),
+      new Audio("./assets/Oooo_yeah__caaan_doo!.wav"),
+      new Audio("./assets/rick.wav"),
+      new Audio("./assets/Riggity.wav"),
+      new Audio("./assets/woo_vu_luvub_dub_dub.wav")
+    ];
+
+    /**
+     * Use the `getARDisplay()` utility to leverage the WebVR API
+     * to see if there are any AR-capable WebVR VRDisplays. Returns
+     * a valid display if found. Otherwise, display the unsupported
+     * browser message.
+     */
+    THREE.ARUtils.getARDisplay().then(function (display) {
+      if (display) {
+        vrFrameData = new VRFrameData();
+        vrDisplay = display;
+        init();
+      } else {
+        THREE.ARUtils.displayUnsupportedMessage();
+      }
+    });
+    function init() {
+      // Turn on the debugging panel
+      var arDebug = new THREE.ARDebug(vrDisplay);
+      document.body.appendChild(arDebug.getElement());
+      // Setup the three.js rendering environment
+      renderer = new THREE.WebGLRenderer({ alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      console.log('setRenderer size', window.innerWidth, window.innerHeight);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.autoClear = false;
+      canvas = renderer.domElement;
+      document.body.appendChild(canvas);
+      scene = new THREE.Scene();
+      // Creating the ARView, which is the object that handles
+      // the rendering of the camera stream behind the three.js
+      // scene
+      arView = new THREE.ARView(vrDisplay, renderer);
+      // The ARPerspectiveCamera is very similar to THREE.PerspectiveCamera,
+      // except when using an AR-capable browser, the camera uses
+      // the projection matrix provided from the device, so that the
+      // perspective camera's depth planes and field of view matches
+      // the physical camera on the device.
+      camera = new THREE.ARPerspectiveCamera(
+        vrDisplay,
+        60,
+        window.innerWidth / window.innerHeight,
+        vrDisplay.depthNear,
+        vrDisplay.depthFar
+      );
+      // VRControls is a utility from three.js that applies the device's
+      // orientation/position to the perspective camera, keeping our
+      // real world and virtual world in sync.
+      vrControls = new THREE.VRControls(camera);
+      // Create the cube geometry that we'll copy and place in the
+      // scene when the user clicks the screen
+      var geometry = new THREE.BoxGeometry( 0.05, 0.05, 0.05 );
+      var faceIndices = ['a', 'b', 'c'];
+      for (var i = 0; i < geometry.faces.length; i++) {
+        var f  = geometry.faces[i];
+        for (var j = 0; j < 3; j++) {
+          var vertexIndex = f[faceIndices[ j ]];
+          f.vertexColors[j] = colors[vertexIndex];
+        }
+      }
+      var material = new THREE.MeshBasicMaterial({ vertexColors: THREE.VertexColors });
+      cube = new THREE.Mesh(geometry, material);
+      // Bind our event handlers
+      window.addEventListener('resize', onWindowResize, false);
+      canvas.addEventListener('touchstart', onClick, false);
+      // Kick off the render loop!
+      update();
+    }
+
+    var counter = 0;
+    /**
+     * The render loop, called once per frame. Handles updating
+     * our scene and rendering.
+     */
+    function update() {      
+      camera.updateMatrixWorld();
+      var vec = camera.position.clone();
+      vec.applyMatrix4( camera.matrixWorld );
+      
+      if(portal !== null){
+        updatePortal(portal, vec, counter);
+      }
+      counter++;
+      
+      // Clears color from the frame before rendering the camera (arView) or scene.
+      renderer.clearColor();
+      // Render the device's camera stream on screen first of all.
+      // It allows to get the right pose synchronized with the right frame.
+      arView.render();
+      // Update our camera projection matrix in the event that
+      // the near or far planes have updated
+      camera.updateProjectionMatrix();
+      // From the WebVR API, populate `vrFrameData` with
+      // updated information for the frame
+      vrDisplay.getFrameData(vrFrameData);
+      // Update our perspective camera's positioning
+      vrControls.update();
+      // Render our three.js virtual scene
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+      // Kick off the requestAnimationFrame to call this function
+      // when a new VRDisplay frame is rendered
+      vrDisplay.requestAnimationFrame(update);
+    }
+    /**
+     * On window resize, update the perspective camera's aspect ratio,
+     * and call `updateProjectionMatrix` so that we can get the latest
+     * projection matrix provided from the device
+     */
+    function onWindowResize () {
+      console.log('setRenderer size', window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    /**
+     * When clicking on the screen, create a cube at the user's
+     * current position.
+     */
+    function onClick () {
+      // Fetch the pose data from the current frame
+      var pose = vrFrameData.pose;
+      // Convert the pose orientation and position into
+      // THREE.Quaternion and THREE.Vector3 respectively
+      var ori = new THREE.Quaternion(
+        pose.orientation[0],
+        pose.orientation[1],
+        pose.orientation[2],
+        pose.orientation[3]
+      );
+      var pos = new THREE.Vector3(
+        pose.position[0],
+        pose.position[1],
+        pose.position[2]
+      );
+      var dirMtx = new THREE.Matrix4();
+      dirMtx.makeRotationFromQuaternion(ori);
+      var push = new THREE.Vector3(0, 0, -1.0);
+      push.transformDirection(dirMtx);
+      pos.addScaledVector(push, 0.125);
+
+      var portalDoor = new Portal360(images[Math.floor(Math.random()*images.length)], 1, 2);
+      if(portal === null){
+        portal = portalDoor;
+      }
+      else{
+        for (var i = scene.children.length - 1; i >= 0; i--) {
+          scene.remove(scene.children[i]);
+        }
+      }
+
+      scene.add(portalDoor.object);
+      portalDoor.object.position.copy(pos);
+      portalDoor.object.quaternion.copy(ori);
+
+      audio[Math.floor(Math.random()*audio.length)].play();
+    }
+
+    function Portal360(videoImageURL, doorWidth, doorHeight, scene, pos, ori){
+      this.object = new THREE.Group;
+      this.object.position.y = doorHeight/4;
+      this.width = doorWidth;
+      this.height = doorHeight;
+      
+      var texture360 = new THREE.TextureLoader().load(videoImageURL);
+      texture360.minFilter = THREE.NearestFilter;
+      texture360.format = THREE.RGBFormat;
+      texture360.flipY = false;  
+
+      // create insideMesh which is visible IIF inside the portal
+      var insideMesh = _buildInsideMesh(texture360, doorWidth, doorHeight);
+      this.object.add(insideMesh);
+      this.insideMesh = insideMesh;
+
+      // create outsideMesh which is visible IIF outside the portal
+      var outsideMesh = _buildOutsideMesh(texture360, doorWidth, doorHeight);
+      this.object.add(outsideMesh);
+      this.outsideMesh = outsideMesh;
+
+      // create frameMesh for the frame of the portal
+      var frameMesh = _buildRectangularFrame(doorWidth/100, doorWidth, doorHeight);
+      this.frameMesh = frameMesh;
+      this.object.add(frameMesh);
+
+      this.outsideMesh.visible = true;
+      this.insideMesh.visible = false;
+    }
+
+    function buildTransparentMaterial(){
+      // if there is a cached version, return it
+      if(buildTransparentMaterial.material){
+        return buildTransparentMaterial.material;
+      }
+      var material = new THREE.MeshBasicMaterial({
+        colorWrite: false // only write to z-buf
+      });
+
+      // cache the material
+      buildTransparentMaterial.material = material;
+      
+      return material;
+    }
+
+    function buildSquareCache(){
+      var container = new THREE.Group;
+      var geometry = new THREE.PlaneGeometry(50,50);
+      var material = buildTransparentMaterial();
+
+      var mesh = new THREE.Mesh( geometry, material);
+      mesh.position.x =  geometry.parameters.width/2 + 0.5;
+      mesh.position.y = -geometry.parameters.height/2 + 0.5;
+      container.add(mesh);
+      
+      var mesh = new THREE.Mesh( geometry, material);
+      mesh.position.x = -geometry.parameters.width/2 + 0.5;
+      mesh.position.y = -geometry.parameters.height/2 - 0.5;
+      container.add(mesh);
+      
+      var mesh = new THREE.Mesh( geometry, material);
+      mesh.position.x = -geometry.parameters.width/2 - 0.5;
+      mesh.position.y =  geometry.parameters.height/2 - 0.5;
+      container.add(mesh);
+      
+      var mesh = new THREE.Mesh( geometry, material);
+      mesh.position.x = +geometry.parameters.width/2 - 0.5;
+      mesh.position.y =  geometry.parameters.height/2 + 0.5;
+      container.add(mesh);
+
+      return container;
+    }
+
+    //create insideMesh which is visible IIF inside the portal
+    function _buildInsideMesh(texture360, doorWidth, doorHeight){
+      var doorInsideCenter = new THREE.Group;
+
+      var geometry = new THREE.PlaneGeometry(doorWidth, doorHeight);
+      var material = buildTransparentMaterial();
+      var mesh = new THREE.Mesh(geometry, material);
+      mesh.rotation.y = Math.PI;
+      doorInsideCenter.add(mesh);
+
+      // add 360 sphere
+      // add 360 texture
+      var radius360Sphere = 10
+
+      var geometry = new THREE.SphereGeometry(radius360Sphere, 16, 16).rotateZ(Math.PI);
+      var material = new THREE.MeshBasicMaterial({
+        map: texture360,
+        side: THREE.DoubleSide,
+      });
+      var sphere360Mesh = new THREE.Mesh(geometry, material);
+      sphere360Mesh.position.z = -0.1;
+      sphere360Mesh.rotation.y = Math.PI;
+      sphere360Mesh.name = "mesh";
+      doorInsideCenter.add(sphere360Mesh);
+      
+      return doorInsideCenter;
+    }
+
+    // create outsideMesh which is visible IIF outside the portal
+    function _buildOutsideMesh(texture360, doorWidth, doorHeight){
+      var doorOutsideCenter = new THREE.Group;
+
+      // add squareCache
+      var squareCache = buildSquareCache();
+      squareCache.scale.y = doorWidth;
+      squareCache.scale.y = doorHeight;
+      doorOutsideCenter.add(squareCache);
+
+      // add 360 sphere
+      // add 360 texture
+      var radius360Sphere = 10
+
+      // build half sphere geometry
+      var geometry = new THREE.SphereGeometry(radius360Sphere, 16, 16, Math.PI, Math.PI, 0, Math.PI).rotateZ(Math.PI);
+      // fix UVs
+      geometry.faceVertexUvs[0].forEach(function(faceUvs){
+        faceUvs.forEach(function(uv){
+          uv.x /= 2
+        });
+      });
+      geometry.uvsNeedUpdate = true;
+      var material = new THREE.MeshBasicMaterial({
+        map: texture360,
+        side: THREE.BackSide,
+      });
+      var sphere360Mesh = new THREE.Mesh(geometry, material);
+      sphere360Mesh.position.z = -0.1;
+      sphere360Mesh.name = "mesh";
+      doorOutsideCenter.add(sphere360Mesh);
+      
+      return doorOutsideCenter;
+    }
+
+    // create frameMesh for the frame of the portal
+    function _buildRectangularFrame(radius, width, height){
+      var container = new THREE.Group;
+      var material = new THREE.MeshNormalMaterial();
+      var material = new THREE.MeshPhongMaterial({
+        color: 'silver',
+        emissive: 'green'
+      });
+
+      var geometryBeamVertical = new THREE.CylinderGeometry(radius, radius, height - radius);
+
+      // mesh right
+      var meshRight = new THREE.Mesh(geometryBeamVertical, material);
+      meshRight.position.x = width/2;
+      meshRight.name = "right";
+      container.add(meshRight);
+
+      // mesh right
+      var meshLeft = new THREE.Mesh(geometryBeamVertical, material);
+      meshLeft.position.x = -width/2;
+      meshLeft.name = "left";
+      container.add(meshLeft);
+
+      var geometryBeamHorizontal = new THREE.CylinderGeometry(radius, radius, width - radius).rotateZ(Math.PI/2);
+
+      // mesh top
+      var meshTop = new THREE.Mesh(geometryBeamHorizontal, material);
+      meshTop.position.y = height/2;
+      meshTop.name = "top";
+      container.add(meshTop);
+
+      // mesh bottom
+      var meshBottom = new THREE.Mesh(geometryBeamHorizontal, material);
+      meshBottom.position.y = -height/2;
+      meshBottom.name = "bottom";
+      container.add(meshBottom);
+      return container;
+    } 
+
+    // update function
+    function isIn(z){
+      return z <= 0;
+    }
+
+    function updatePortal(portal, vec, counter) {
+      // determine if the user is isOutsidePortal
+      var localPosition = new THREE.Vector3;
+      portal.object.worldToLocal(localPosition);
+      portal.object.worldToLocal(vec);
+      var isOutsidePortal = !isIn(vec.z);
+
+      // handle mesh visibility based on isOutsidePortal
+      if( isOutsidePortal ){
+        portal.outsideMesh.visible = true;
+        portal.insideMesh.visible = false;
+      }
+      else{
+        portal.outsideMesh.visible = false;
+        portal.insideMesh.visible = true;
+      }
+    }
+    </script>
+  </body>
+</html>
+
